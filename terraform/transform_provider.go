@@ -198,14 +198,19 @@ func (n *graphNodeMissingProvider) ProviderConfig() *config.RawConfig {
 }
 
 // GraphNodeDotter impl.
-func (n *graphNodeMissingProvider) Dot(name string) string {
+func (n *graphNodeMissingProvider) Dot(name string, ctx *GraphDotContext) string {
 	return fmt.Sprintf(
-		"\"%s\" [\n"+
-			"\tlabel=\"%s\"\n"+
+		"%q [\n"+
+			"\tlabel=%q\n"+
 			"\tshape=diamond\n"+
-			"];",
+			"];\n",
 		name,
 		n.Name())
+}
+
+// GraphNodeDotterRanked impl.
+func (n *graphNodeMissingProvider) DotRank() int {
+	return 0
 }
 
 func providerVertexMap(g *Graph) map[string]dag.Vertex {

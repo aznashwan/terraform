@@ -219,7 +219,7 @@ func (n *GraphNodeConfigProvider) ProviderConfig() *config.RawConfig {
 }
 
 // GraphNodeDotter impl.
-func (n *GraphNodeConfigProvider) Dot(name string) string {
+func (n *GraphNodeConfigProvider) Dot(name string, ctx *GraphDotContext) string {
 	return fmt.Sprintf(
 		"\"%s\" [\n"+
 			"\tlabel=\"%s\"\n"+
@@ -318,8 +318,8 @@ func (n *GraphNodeConfigResource) Name() string {
 }
 
 // GraphNodeDotter impl.
-func (n *GraphNodeConfigResource) Dot(name string) string {
-	if n.DestroyMode != DestroyNone {
+func (n *GraphNodeConfigResource) Dot(name string, ctx *GraphDotContext) string {
+	if n.DestroyMode != DestroyNone && !ctx.Opts.Verbose {
 		return ""
 	}
 
@@ -635,7 +635,7 @@ func (n *graphNodeModuleExpanded) ConfigType() GraphNodeConfigType {
 }
 
 // GraphNodeDotter impl.
-func (n *graphNodeModuleExpanded) Dot(name string) string {
+func (n *graphNodeModuleExpanded) Dot(name string, ctx *GraphDotContext) string {
 	return fmt.Sprintf(
 		"\"%s\" [\n"+
 			"\tlabel=\"%s\"\n"+

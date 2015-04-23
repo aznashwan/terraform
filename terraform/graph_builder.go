@@ -119,7 +119,10 @@ func (b *BuiltinGraphBuilder) Steps() []GraphTransformer {
 		// Provisioner-related transformations
 		&MissingProvisionerTransformer{Provisioners: b.Provisioners},
 		&ProvisionerTransformer{},
-		&PruneProvisionerTransformer{},
+		b.conditional(&conditionalOpts{
+			If:   func() bool { return !b.Verbose },
+			Then: &PruneProvisionerTransformer{},
+		}),
 
 		// Run our vertex-level transforms
 		&VertexTransformer{

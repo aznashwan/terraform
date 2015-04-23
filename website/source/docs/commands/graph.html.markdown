@@ -28,6 +28,12 @@ Options:
 * `-module-depth=n` - The maximum depth to expand modules. By default this is
                       zero, which will not expand modules at all.
 
+* `-verbose`        - Generate a verbose, "worst-case" graph, with all nodes
+                      for potential operations in place.
+
+* `-draw-cycles`    - Highlight any cycles in the graph with colored edges.
+                      This helps when diagnosing cycle errors.
+
 ## Generating Images
 
 The output of `terraform graph` is in the DOT format, which can

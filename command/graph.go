@@ -17,11 +17,15 @@ type GraphCommand struct {
 
 func (c *GraphCommand) Run(args []string) int {
 	var moduleDepth int
+	var verbose bool
+	var drawCycles bool
 
 	args = c.Meta.process(args, false)
 
 	cmdFlags := flag.NewFlagSet("graph", flag.ContinueOnError)
 	cmdFlags.IntVar(&moduleDepth, "module-depth", 0, "module-depth")
+	cmdFlags.BoolVar(&verbose, "verbose", false, "verbose")
+	cmdFlags.BoolVar(&drawCycles, "draw-cycles", false, "draw-cycles")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }
 	if err := cmdFlags.Parse(args); err != nil {
 		return 1
@@ -52,16 +56,27 @@ func (c *GraphCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Skip validation during graph generation - we want to see the graph even if
+	// it is invalid for some reason.
 	g, err := ctx.Graph(&terraform.ContextGraphOpts{
-		Validate: true,
-		Verbose:  false,
+		Verbose:  verbose,
+		Validate: false,
 	})
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error creating graph: %s", err))
 		return 1
 	}
 
-	c.Ui.Output(terraform.GraphDot(g, nil))
+	graphStr, err := terraform.GraphDot(g, &terraform.GraphDotOpts{
+		DrawCycles: drawCycles,
+		Verbose:    verbose,
+	})
+	if err != nil {
+		c.Ui.Error(fmt.Sprintf("Error converting graph: %s", err))
+		return 1
+	}
+
+	c.Ui.Output(graphStr)
 
 	return 0
 }
@@ -84,6 +99,11 @@ Options:
   -module-depth=n      The maximum depth to expand modules. By default this is
                        zero, which will not expand modules at all.
 
+  -verbose             Generate a verbose, "worst-case" graph, with all nodes
+                       for potential operations in place.
+
+  -draw-cycles         Highlight any cycles in the graph with colored edges.
+                       This helps when diagnosing cycle errors.
 `
 	return strings.TrimSpace(helpText)
 }

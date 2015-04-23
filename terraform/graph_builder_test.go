@@ -1,6 +1,7 @@
 package terraform
 
 import (
+	"log"
 	"reflect"
 	"strings"
 	"testing"
@@ -45,6 +46,7 @@ func TestBasicGraphBuilder_validate(t *testing.T) {
 	}
 
 	_, err := b.Build(RootModulePath)
+	log.Printf("err: %#v", err)
 	if err == nil {
 		t.Fatal("should error")
 	}
