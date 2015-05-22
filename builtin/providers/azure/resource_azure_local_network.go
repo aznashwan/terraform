@@ -84,12 +84,16 @@ func resourceAzureLocalNetworkConnectionCreate(d *schema.ResourceData, meta inte
 
 	// send the configuration back to Azure:
 	log.Println("[INFO] Sending updated network configuration back to Azure.")
-	err = networkClient.SetVirtualNetworkConfiguration(netConf)
-	azureClient.mutex.Unlock()
+	reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 	if err != nil {
 		return fmt.Errorf("Failed setting updated network configuration: %s", err)
 	}
+	err = managementClient.WaitForOperation(reqID, nil)
+	if err != nil {
+		return fmt.Errorf("Failed updating the network configuration: %s", err)
+	}
 
+	azureClient.mutex.Unlock()
 	d.SetId(getRandomStringLabel(50))
 	return nil
 }
@@ -179,9 +183,13 @@ func resourceAzureLocalNetworkConnectionUpdate(d *schema.ResourceData, meta inte
 	} else if cvpn || cprefixes {
 		// else, send the configuration back to Azure:
 		log.Println("[INFO] Sending updated network configuration back to Azure.")
-		err = networkClient.SetVirtualNetworkConfiguration(netConf)
+		reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 		if err != nil {
 			return fmt.Errorf("Failed setting updated network configuration: %s", err)
+		}
+		err = managementClient.WaitForOperation(reqID, nil)
+		if err != nil {
+			return fmt.Errorf("Failed updating the network configuration: %s", err)
 		}
 	}
 
@@ -247,12 +255,16 @@ func resourceAzureLocalNetworkConnectionDelete(d *schema.ResourceData, meta inte
 
 	// send the configuration back to Azure:
 	log.Println("[INFO] Sending updated network configuration back to Azure.")
-	err = networkClient.SetVirtualNetworkConfiguration(netConf)
-	azureClient.mutex.Unlock()
+	reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 	if err != nil {
 		return fmt.Errorf("Failed setting updated network configuration: %s", err)
 	}
+	err = managementClient.WaitForOperation(reqID, nil)
+	if err != nil {
+		return fmt.Errorf("Failed updating the network configuration: %s", err)
+	}
 
+	azureClient.mutex.Unlock()
 	d.SetId("")
 	return nil
 }

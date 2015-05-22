@@ -55,22 +55,26 @@ func resourceAzureDnsServerCreate(d *schema.ResourceData, meta interface{}) erro
 	log.Println("[DEBUG] Adding new DNS server definition to Azure.")
 	name := d.Get("name").(string)
 	address := d.Get("dns_address").(string)
-	netConf.Configuration.Dns.DnsServers = append(
-		netConf.Configuration.Dns.DnsServers,
-		virtualnetwork.DnsServer{
+	netConf.Configuration.DNS.DNSServers = append(
+		netConf.Configuration.DNS.DNSServers,
+		virtualnetwork.DNSServer{
 			Name:      name,
 			IPAddress: address,
 		})
 
 	// send the configuration back to Azure:
 	log.Println("[INFO] Sending updated network configuration back to Azure.")
-	err = networkClient.SetVirtualNetworkConfiguration(netConf)
-	azureClient.mutex.Unlock()
+	reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 	if err != nil {
-		return fmt.Errorf("Failed setting updated network configuration: %s", err)
+		return fmt.Errorf("Failed issuing update to network configuration: %s", err)
+	}
+	err = managementClient.WaitForOperation(reqID, nil)
+	if err != nil {
+		return fmt.Errorf("Error setting network configuration: %s", err)
 	}
 
 	d.SetId(getRandomStringLabel(50))
+	azureClient.mutex.Unlock()
 	return nil
 }
 
@@ -94,7 +98,7 @@ func resourceAzureDnsServerRead(d *schema.ResourceData, meta interface{}) error 
 	name := d.Get("name").(string)
 
 	// search for our DNS and update it if the IP has been changed:
-	for _, dns := range netConf.Configuration.Dns.DnsServers {
+	for _, dns := range netConf.Configuration.DNS.DNSServers {
 		if dns.Name == name {
 			found = true
 			d.Set("dns_address", dns.IPAddress)
@@ -135,20 +139,24 @@ func resourceAzureDnsServerUpdate(d *schema.ResourceData, meta interface{}) erro
 		}
 
 		// search for our DNS and update its address value:
-		for i, dns := range netConf.Configuration.Dns.DnsServers {
+		for i, dns := range netConf.Configuration.DNS.DNSServers {
 			found = true
 			if dns.Name == name {
-				netConf.Configuration.Dns.DnsServers[i].IPAddress = d.Get("dns_address").(string)
+				netConf.Configuration.DNS.DNSServers[i].IPAddress = d.Get("dns_address").(string)
 			}
 		}
 
 		// if the config has changes, send the configuration back to Azure:
 		if found && caddress {
 			log.Println("[INFO] Sending updated network configuration back to Azure.")
-			err = networkClient.SetVirtualNetworkConfiguration(netConf)
+			reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
+			if err != nil {
+				return fmt.Errorf("Failed issuing update to network configuration: %s", err)
+			}
+			err = managementClient.WaitForOperation(reqID, nil)
 			azureClient.mutex.Unlock()
 			if err != nil {
-				return fmt.Errorf("Failed setting updated network configuration: %s", err)
+				return fmt.Errorf("Error setting network configuration: %s", err)
 			}
 		}
 	}
@@ -180,7 +188,7 @@ func resourceAzureDnsServerExists(d *schema.ResourceData, meta interface{}) (boo
 	name := d.Get("name").(string)
 
 	// search for the DNS server's definition:
-	for _, dns := range netConf.Configuration.Dns.DnsServers {
+	for _, dns := range netConf.Configuration.DNS.DNSServers {
 		if dns.Name == name {
 			return true, nil
 		}
@@ -209,21 +217,25 @@ func resourceAzureDnsServerDelete(d *schema.ResourceData, meta interface{}) erro
 	name := d.Get("name").(string)
 
 	// search for the DNS server's definition and remove it:
-	for i, dns := range netConf.Configuration.Dns.DnsServers {
+	for i, dns := range netConf.Configuration.DNS.DNSServers {
 		if dns.Name == name {
-			netConf.Configuration.Dns.DnsServers = append(
-				netConf.Configuration.Dns.DnsServers[:i],
-				netConf.Configuration.Dns.DnsServers[i+1:]...,
+			netConf.Configuration.DNS.DNSServers = append(
+				netConf.Configuration.DNS.DNSServers[:i],
+				netConf.Configuration.DNS.DNSServers[i+1:]...,
 			)
 		}
 	}
 
 	// send the configuration back to Azure:
 	log.Println("[INFO] Sending updated network configuration back to Azure.")
-	err = networkClient.SetVirtualNetworkConfiguration(netConf)
+	reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
+	if err != nil {
+		return fmt.Errorf("Failed issuing update to network configuration: %s", err)
+	}
+	err = managementClient.WaitForOperation(reqID, nil)
 	azureClient.mutex.Unlock()
 	if err != nil {
-		return fmt.Errorf("Failed setting updated network configuration: %s", err)
+		return fmt.Errorf("Error setting network configuration: %s", err)
 	}
 
 	d.SetId("")

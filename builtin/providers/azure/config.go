@@ -43,7 +43,7 @@ func (c *Config) Client() (interface{}, error) {
 		managementClient, err = management.NewClientFromConfig(
 			c.SubscriptionID,
 			c.ManagementCert,
-			management.ClientConfig{c.ManagementUrl},
+			management.ClientConfig{ManagementURL: c.ManagementUrl},
 		)
 	} else {
 		managementClient, err = management.NewClient(

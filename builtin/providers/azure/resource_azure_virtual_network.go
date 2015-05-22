@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/Azure/azure-sdk-for-go/management"
 	netsecgroup "github.com/Azure/azure-sdk-for-go/management/networksecuritygroup"
 	"github.com/Azure/azure-sdk-for-go/management/virtualnetwork"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -83,6 +84,7 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 	}
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
+	netSecClient := netsecgroup.NewClient(managementClient)
 
 	log.Println("[INFO] Retrieving current network configuration from Azure.")
 	azureClient.mutex.Lock()
@@ -105,11 +107,11 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	// fetch DNS references:
-	var dnsRefs []virtualnetwork.DnsServerRef
+	var dnsRefs []virtualnetwork.DNSServerRef
 	if ndnses := d.Get("dns_servers_names.#").(int); ndnses > 0 {
-		dnsRefs = []virtualnetwork.DnsServerRef{}
+		dnsRefs = []virtualnetwork.DNSServerRef{}
 		for i := 0; i < ndnses; i++ {
-			dnsRefs = append(dnsRefs, virtualnetwork.DnsServerRef{
+			dnsRefs = append(dnsRefs, virtualnetwork.DNSServerRef{
 				Name: d.Get(fmt.Sprintf("dns_servers_names.%d", i)).(string),
 			})
 		}
@@ -125,6 +127,24 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 				Name:          sub["name"].(string),
 				AddressPrefix: sub["prefix"].(string),
 			})
+			for i := 0; i < nsubs; i++ {
+				log.Println(fmt.Sprintf("[DEBUG] Adding network security settings to subnet %d.", i+1))
+				sub := d.Get(fmt.Sprintf("subnet.%d", i)).(map[string]interface{})
+				if secGroup, ok := sub["security_group_name"].(string); ok {
+					reqID, err := netSecClient.AddNetworkSecurityToSubnet(
+						secGroup,
+						sub["name"].(string),
+						name,
+					)
+					if err != nil {
+						return fmt.Errorf("Failed requesting addition of network security to subnet %d: %s", i+1, err)
+					}
+					err = managementClient.WaitForOperation(reqID, nil)
+					if err != nil {
+						return fmt.Errorf("Failed adding network security settings to subnet %d: %s", i+1, err)
+					}
+				}
+			}
 		}
 	}
 
@@ -133,7 +153,7 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 		Name:          name,
 		Location:      location,
 		Subnets:       subnets,
-		DnsServersRef: dnsRefs,
+		DNSServersRef: dnsRefs,
 		AddressSpace: virtualnetwork.AddressSpace{
 			AddressPrefix: prefixes,
 		},
@@ -142,33 +162,13 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 
 	// send the updated configuration back:
 	log.Println("[INFO] Sending virtual network configuration back to Azure.")
-	err = networkClient.SetVirtualNetworkConfiguration(netConf)
+	reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 	if err != nil {
 		return fmt.Errorf("Failed updating network configuration: %s", err)
 	}
-
-	// fetch subnets:
-	if nsubs := d.Get("subnet.#").(int); nsubs > 0 {
-		log.Println("[INFO] Started applying network security rules to subnets:")
-		netSecClient := netsecgroup.NewClient(managementClient)
-		for i := 0; i < nsubs; i++ {
-			log.Println(fmt.Sprintf("[DEBUG] Adding network security settings to subnet %d.", i+1))
-			sub := d.Get(fmt.Sprintf("subnet.%d", i)).(map[string]interface{})
-			if secGroup, ok := sub["security_group_name"].(string); ok {
-				reqID, err := netSecClient.AddNetworkSecurityToSubnet(
-					secGroup,
-					sub["name"].(string),
-					name,
-				)
-				if err != nil {
-					return fmt.Errorf("Failed requesting addition of network security to subnet %d: %s", i+1, err)
-				}
-				err = managementClient.WaitAsyncOperation(reqID)
-				if err != nil {
-					return fmt.Errorf("Failed adding network security settings to subnet %d: %s", i+1, err)
-				}
-			}
-		}
+	err = managementClient.WaitForOperation(reqID, nil)
+	if err != nil {
+		return fmt.Errorf("Failed updating the network configuration: %s", err)
 	}
 
 	d.SetId(getRandomStringLabel(50))
@@ -203,21 +203,28 @@ func resourceAzureVirtualNetworkRead(d *schema.ResourceData, meta interface{}) e
 			// read subnets:
 			subnets := make([]map[string]interface{}, 0, 1)
 			for i, sub := range vnet.Subnets {
-				secGroup, err := secGroupClient.GetNetworkSecurityGroupForSubnet(sub.Name, name)
-				if err != nil {
-					return fmt.Errorf("Error whilst reading security groups for subnet %d: %s", i+1, err)
+				var secGroupName string
+				if secGroup, err := secGroupClient.GetNetworkSecurityGroupForSubnet(sub.Name, name); err != nil {
+					if management.IsResourceNotFoundError(err) {
+						// it means merely that no securoty group was attached.
+						secGroupName = secGroup.Name
+					} else {
+						return fmt.Errorf("Error whilst reading security groups for subnet %d: %s", i+1, err)
+					}
+				} else {
+					secGroupName = secGroup.Name
 				}
 				subnets = append(subnets, map[string]interface{}{
 					"name":                sub.Name,
 					"prefix":              sub.AddressPrefix,
-					"security_group_name": secGroup.Name,
+					"security_group_name": secGroupName,
 				})
 			}
 			d.Set("subnet", subnets)
 
 			// read dns server references:
 			dnsRefs := []string{}
-			for _, dns := range vnet.DnsServersRef {
+			for _, dns := range vnet.DNSServersRef {
 				dnsRefs = append(dnsRefs, dns.Name)
 			}
 			d.Set("dns_servers_names", dnsRefs)
@@ -276,16 +283,16 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 
 			// apply dns server references, if required:
 			if cdnses {
-				var dnsRefs []virtualnetwork.DnsServerRef
+				var dnsRefs []virtualnetwork.DNSServerRef
 				if ndnses := d.Get("dns_servers_names.#").(int); ndnses > 0 {
-					dnsRefs = []virtualnetwork.DnsServerRef{}
+					dnsRefs = []virtualnetwork.DNSServerRef{}
 					for i := 0; i < ndnses; i++ {
-						dnsRefs = append(dnsRefs, virtualnetwork.DnsServerRef{
+						dnsRefs = append(dnsRefs, virtualnetwork.DNSServerRef{
 							Name: d.Get(fmt.Sprintf("dns_servers_names.%d", i)).(string),
 						})
 					}
 				}
-				vnets[i].DnsServersRef = dnsRefs
+				vnets[i].DNSServersRef = dnsRefs
 			}
 
 			// apply subnet changes if required:
@@ -302,19 +309,22 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 						})
 
 						// check to see if we need to remove the old one:
+						found := true
 						secGroup, err := secGroupClient.GetNetworkSecurityGroupForSubnet(subName, name)
 						if err != nil {
-							return fmt.Errorf("Error getting current network security group for subnet %d: %s", i+1, err)
+							if management.IsResourceNotFoundError(err) {
+								found = false
+							} else {
+								return fmt.Errorf("Error getting current network security group for subnet %d: %s", i+1, err)
+							}
 						}
-						// TODO(aznashwan): is this condition correct?
-						if secGroup.Name != "" {
+						if !found {
 							// we must delte it first:
 							reqID, err := secGroupClient.DeleteNetworkSecurityGroup(secGroup.Name)
 							if err != nil {
-								// TODO(aznashwan): see if this is right condition:
 								return fmt.Errorf("Error issuing removal security group settings from subnet %d for update: %s", i+1, err)
 							}
-							err = managementClient.WaitAsyncOperation(reqID)
+							err = managementClient.WaitForOperation(reqID, nil)
 							if err != nil {
 								return fmt.Errorf("Error removing security group settings from subnet %d for update: %s", i+1, err)
 							}
@@ -328,7 +338,7 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 							if err != nil {
 								return fmt.Errorf("Error issuing network security group settings application for subnet %d: %s", i, err)
 							}
-							err = managementClient.WaitAsyncOperation(reqID)
+							err = managementClient.WaitForOperation(reqID, nil)
 							if err != nil {
 								return fmt.Errorf("Error removing network security group settings for subnet %d: %s", i+1, err)
 							}
@@ -347,11 +357,14 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 		d.SetId("")
 	} else if cprefixes || cdnses || csubnets {
 		// if it was found and changes are due; return the new configuration to Azure:
-		err = networkClient.SetVirtualNetworkConfiguration(netConf)
+		reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
+		if err != nil {
+			return fmt.Errorf("Failed to issue set new Azure network configuration: %s", err)
+		}
+		err = managementClient.WaitForOperation(reqID, nil)
 		if err != nil {
 			return fmt.Errorf("Failed to set new Azure network configuration: %s", err)
 		}
-
 	}
 
 	azureClient.mutex.Unlock()
@@ -418,17 +431,19 @@ func resourceAzureVirtualNetworkDelete(d *schema.ResourceData, meta interface{})
 			sub := d.Get(fmt.Sprintf("subnet.%d", i)).(map[string]interface{})
 			subName := sub["name"].(string)
 			secGroupName := sub["security_group_name"].(string)
-			reqID, err := secGroupClient.RemoveNetworkSecurityGroupFromSubnet(
-				secGroupName,
-				subName,
-				name,
-			)
-			if err != nil {
-				return fmt.Errorf("Error issuing network security group removal from subnet %d: %s", i+1, err)
-			}
-			err = managementClient.WaitAsyncOperation(reqID)
-			if err != nil {
-				return fmt.Errorf("Error removing network security group settings from subnet %d: %s", i+1, err)
+			if secGroupName != "" {
+				reqID, err := secGroupClient.RemoveNetworkSecurityGroupFromSubnet(
+					secGroupName,
+					subName,
+					name,
+				)
+				if err != nil {
+					return fmt.Errorf("Error issuing network security group removal from subnet %d: %s", i+1, err)
+				}
+				err = managementClient.WaitForOperation(reqID, nil)
+				if err != nil {
+					return fmt.Errorf("Error removing network security group settings from subnet %d: %s", i+1, err)
+				}
 			}
 		}
 	}
@@ -452,13 +467,17 @@ func resourceAzureVirtualNetworkDelete(d *schema.ResourceData, meta interface{})
 	} else {
 		// else; send the updated configuration back:
 		log.Println("[INFO] Sending virtual network configuration back to Azure.")
-		err = networkClient.SetVirtualNetworkConfiguration(netConf)
-		azureClient.mutex.Unlock()
+		reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 		if err != nil {
 			return fmt.Errorf("Failed updating network configuration: %s", err)
 		}
+		err = managementClient.WaitForOperation(reqID, nil)
+		if err != nil {
+			return fmt.Errorf("Failed to set new Azure network configuration: %s", err)
+		}
 	}
 
+	azureClient.mutex.Unlock()
 	d.SetId("")
 	return nil
 }

@@ -110,7 +110,7 @@ func resourceAzureSecurityGroupRuleCreate(d *schema.ResourceData, meta interface
 	if err != nil {
 		return fmt.Errorf("Error sending network security group rule creation request to Azure: %s", err)
 	}
-	err = managementClient.WaitAsyncOperation(reqID)
+	err = managementClient.WaitForOperation(reqID, nil)
 	if err != nil {
 		return fmt.Errorf("Error creating network security group rule on Azure: %s", err)
 	}
@@ -234,7 +234,7 @@ func resourceAzureSecurityGroupRuleUpdate(d *schema.ResourceData, meta interface
 	if err != nil {
 		return fmt.Errorf("Error sending network security group rule update request to Azure: %s", err)
 	}
-	err = managementClient.WaitAsyncOperation(reqID)
+	err = managementClient.WaitForOperation(reqID, nil)
 	if err != nil {
 		return fmt.Errorf("Error updating network security group rule on Azure: %s", err)
 	}
@@ -329,7 +329,7 @@ func resourceAzureSecurityGroupRuleDelete(d *schema.ResourceData, meta interface
 	if err != nil {
 		return fmt.Errorf("Error sending network security group rule delete request to Azure: %s", err)
 	}
-	err = managementClient.WaitAsyncOperation(reqID)
+	err = managementClient.WaitForOperation(reqID, nil)
 	if err != nil {
 		return fmt.Errorf("Error deleting network security group rule off Azure: %s", err)
 	}

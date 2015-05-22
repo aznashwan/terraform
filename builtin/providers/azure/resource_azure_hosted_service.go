@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/Azure/azure-sdk-for-go/management"
 	"github.com/Azure/azure-sdk-for-go/management/hostedservice"
 	"github.com/hashicorp/terraform/helper/schema"
 )
@@ -89,22 +90,17 @@ func resourceAzureHostedServiceCreate(d *schema.ResourceData, meta interface{}) 
 	label := getRandomStringLabel(50)
 	d.SetId(label)
 
-	reqID, err := hostedServiceClient.CreateHostedService(
-		serviceName,
-		location,
-		reverseDNS,
-		label,
-		description,
+	err := hostedServiceClient.CreateHostedService(
+		hostedservice.CreateHostedServiceParameters{
+			ServiceName:    serviceName,
+			Location:       location,
+			Label:          label,
+			Description:    description,
+			ReverseDNSFqdn: reverseDNS,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("Failed defining new Azure hosted service: %s", err)
-	}
-
-	log.Println("[DEBUG] Waiting for hosted service creation.")
-	log.Println("[INFO] Creating new Azure hosted service.")
-	err = managementClient.WaitAsyncOperation(reqID)
-	if err != nil {
-		return fmt.Errorf("Failed creating new Azure hosted service: %s", err)
 	}
 
 	return nil
@@ -121,12 +117,18 @@ func resourceAzureHostedServiceExists(d *schema.ResourceData, meta interface{}) 
 
 	log.Println("[INFO] Querying for hosted service existence.")
 	serviceName := d.Get("service_name").(string)
-	exists, _, err := hostedServiceClient.CheckHostedServiceNameAvailability(serviceName)
+	_, err := hostedServiceClient.GetHostedService(serviceName)
 	if err != nil {
-		return false, fmt.Errorf("Failed to query for hosted service name availability: %s", err)
+		if management.IsResourceNotFoundError(err) {
+			// it means that the hosted service has been deleted in the meantime...
+			d.SetId("")
+			return false, nil
+		} else {
+			return false, fmt.Errorf("Failed to query for hosted service name availability: %s", err)
+		}
 	}
 
-	return exists, nil
+	return true, nil
 }
 
 // resourceAzureHostedServiceRead does all the necessary API calls
@@ -147,12 +149,12 @@ func resourceAzureHostedServiceRead(d *schema.ResourceData, meta interface{}) er
 
 	log.Println("[DEBUG] Reading hosted service query result data.")
 	d.Set("service_name", hostedService.ServiceName)
-	d.Set("url", hostedService.Url)
+	d.Set("url", hostedService.URL)
 	d.Set("location", hostedService.Location)
 	d.SetId(hostedService.Label)
 	d.Set("description", hostedService.Description)
 	d.Set("status", hostedService.Status)
-	d.Set("reverse_dns_fqdn", hostedService.ReverseDnsFqdn)
+	d.Set("reverse_dns_fqdn", hostedService.ReverseDNSFqdn)
 	d.Set("default_certificate_thumbprint", hostedService.DefaultWinRmCertificateThumbprint)
 
 	return nil
@@ -183,7 +185,7 @@ func resourceAzureHostedServiceDelete(d *schema.ResourceData, meta interface{}) 
 	}
 
 	log.Println("[DEBUG] Awaiting confirmation on hosted service deletion.")
-	err = managementClient.WaitAsyncOperation(reqID)
+	err = managementClient.WaitForOperation(reqID, nil)
 	if err != nil {
 		return fmt.Errorf("Error on hosted service deletion: %s", err)
 	}
