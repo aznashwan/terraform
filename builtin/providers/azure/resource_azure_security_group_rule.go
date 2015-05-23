@@ -59,7 +59,7 @@ func resourceAzureSecurityGroupRule() *schema.Resource {
 				Required:    true,
 				Description: parameterDescriptions["netsecgropu_src_port_range"],
 			},
-			"desination_address_prefix": &schema.Schema{
+			"destination_address_prefix": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: parameterDescriptions["netsecgroup_dest_addr_prefix"],
@@ -91,14 +91,14 @@ func resourceAzureSecurityGroupRuleCreate(d *schema.ResourceData, meta interface
 	// create and configure the RuleResponse:
 	rule := netsecgroup.RuleRequest{
 		Name:                     d.Get("name").(string),
-		Type:                     d.Get("type").(netsecgroup.RuleType),
+		Type:                     netsecgroup.RuleType(d.Get("type").(string)),
 		Priority:                 d.Get("priority").(int),
-		Action:                   d.Get("action").(netsecgroup.RuleAction),
+		Action:                   netsecgroup.RuleAction(d.Get("action").(string)),
 		SourceAddressPrefix:      d.Get("source_address_prefix").(string),
-		SourcePortRange:          d.Get("desination_address_prefix").(string),
-		DestinationAddressPrefix: d.Get("source_port_range").(string),
+		SourcePortRange:          d.Get("source_port_range").(string),
+		DestinationAddressPrefix: d.Get("destination_address_prefix").(string),
 		DestinationPortRange:     d.Get("destination_port_range").(string),
-		Protocol:                 d.Get("protocol").(netsecgroup.RuleProtocol),
+		Protocol:                 netsecgroup.RuleProtocol(d.Get("protocol").(string)),
 	}
 
 	// send the create request to Azure:
@@ -158,7 +158,7 @@ func resourceAzureSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}
 			d.Set("action", rule.Action)
 			d.Set("source_address_prefix", rule.SourceAddressPrefix)
 			d.Set("source_port_range", rule.SourcePortRange)
-			d.Set("desination_address_prefix", rule.DestinationAddressPrefix)
+			d.Set("destination_address_prefix", rule.DestinationAddressPrefix)
 			d.Set("destination_port_range", rule.DestinationPortRange)
 			d.Set("protocol", rule.Protocol)
 		}
@@ -215,14 +215,14 @@ func resourceAzureSecurityGroupRuleUpdate(d *schema.ResourceData, meta interface
 	// else, start building up the rule request struct:
 	newRule := netsecgroup.RuleRequest{
 		Name:                     d.Get("name").(string),
-		Type:                     d.Get("type").(netsecgroup.RuleType),
+		Type:                     netsecgroup.RuleType(d.Get("type").(string)),
 		Priority:                 d.Get("priority").(int),
-		Action:                   d.Get("action").(netsecgroup.RuleAction),
+		Action:                   netsecgroup.RuleAction(d.Get("action").(string)),
 		SourceAddressPrefix:      d.Get("source_address_prefix").(string),
-		SourcePortRange:          d.Get("desination_address_prefix").(string),
-		DestinationAddressPrefix: d.Get("source_port_range").(string),
+		SourcePortRange:          d.Get("source_port_range").(string),
+		DestinationAddressPrefix: d.Get("destination_address_prefix").(string),
 		DestinationPortRange:     d.Get("destination_port_range").(string),
-		Protocol:                 d.Get("protocol").(netsecgroup.RuleProtocol),
+		Protocol:                 netsecgroup.RuleProtocol(d.Get("protocol").(string)),
 	}
 
 	// send the create request to Azure:
