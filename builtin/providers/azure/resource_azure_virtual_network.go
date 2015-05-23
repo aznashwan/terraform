@@ -88,6 +88,7 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 
 	log.Println("[INFO] Retrieving current network configuration from Azure.")
 	azureClient.mutex.Lock()
+	defer azureClient.mutex.Unlock()
 	netConf, err := networkClient.GetVirtualNetworkConfiguration()
 	if err != nil {
 		return fmt.Errorf("Error while retrieving current network configuration: %s", err)
@@ -130,7 +131,7 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 			for i := 0; i < nsubs; i++ {
 				log.Println(fmt.Sprintf("[DEBUG] Adding network security settings to subnet %d.", i+1))
 				sub := d.Get(fmt.Sprintf("subnet.%d", i)).(map[string]interface{})
-				if secGroup, ok := sub["security_group_name"].(string); ok {
+				if secGroup := sub["security_group_name"].(string); secGroup != "" {
 					reqID, err := netSecClient.AddNetworkSecurityToSubnet(
 						secGroup,
 						sub["name"].(string),
@@ -172,7 +173,6 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	d.SetId(getRandomStringLabel(50))
-	azureClient.mutex.Unlock()
 	return nil
 }
 
@@ -249,6 +249,7 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 	log.Println("[DEBUG] Changes to Azure virtual network exist; applying now.")
 	log.Println("[INFO] Retrieving current network configuration from Azure.")
 	azureClient.mutex.Lock()
+	defer azureClient.mutex.Unlock()
 	netConf, err := networkClient.GetVirtualNetworkConfiguration()
 	if err != nil {
 		return fmt.Errorf("Error while retrieving current network configuration: %s", err)
@@ -367,7 +368,6 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 		}
 	}
 
-	azureClient.mutex.Unlock()
 	return nil
 }
 
@@ -415,6 +415,7 @@ func resourceAzureVirtualNetworkDelete(d *schema.ResourceData, meta interface{})
 	log.Println("[DEBUG] Changes to Azure virtual network exist; applying now.")
 	log.Println("[INFO] Retrieving current network configuration from Azure.")
 	azureClient.mutex.Lock()
+	defer azureClient.mutex.Unlock()
 	netConf, err := networkClient.GetVirtualNetworkConfiguration()
 	if err != nil {
 		return fmt.Errorf("Error while retrieving current network configuration: %s", err)
@@ -477,7 +478,6 @@ func resourceAzureVirtualNetworkDelete(d *schema.ResourceData, meta interface{})
 		}
 	}
 
-	azureClient.mutex.Unlock()
 	d.SetId("")
 	return nil
 }

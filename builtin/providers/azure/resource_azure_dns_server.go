@@ -47,6 +47,7 @@ func resourceAzureDnsServerCreate(d *schema.ResourceData, meta interface{}) erro
 
 	log.Println("[INFO] Fetching current network configuration from Azure.")
 	azureClient.mutex.Lock()
+	defer azureClient.mutex.Unlock()
 	netConf, err := networkClient.GetVirtualNetworkConfiguration()
 	if err != nil {
 		return fmt.Errorf("Failed to get the current network configuration from Azure: %s", err)
@@ -74,7 +75,6 @@ func resourceAzureDnsServerCreate(d *schema.ResourceData, meta interface{}) erro
 	}
 
 	d.SetId(getRandomStringLabel(50))
-	azureClient.mutex.Unlock()
 	return nil
 }
 
@@ -133,6 +133,7 @@ func resourceAzureDnsServerUpdate(d *schema.ResourceData, meta interface{}) erro
 		log.Println("[DEBUG] DNS server address has changes; updating it on Azure.")
 		log.Println("[INFO] Fetching current network configuration from Azure.")
 		azureClient.mutex.Lock()
+		defer azureClient.mutex.Unlock()
 		netConf, err = networkClient.GetVirtualNetworkConfiguration()
 		if err != nil {
 			return fmt.Errorf("Failed to get the current network configuration from Azure: %s", err)
@@ -154,7 +155,6 @@ func resourceAzureDnsServerUpdate(d *schema.ResourceData, meta interface{}) erro
 				return fmt.Errorf("Failed issuing update to network configuration: %s", err)
 			}
 			err = managementClient.WaitForOperation(reqID, nil)
-			azureClient.mutex.Unlock()
 			if err != nil {
 				return fmt.Errorf("Error setting network configuration: %s", err)
 			}
@@ -209,6 +209,7 @@ func resourceAzureDnsServerDelete(d *schema.ResourceData, meta interface{}) erro
 
 	log.Println("[INFO] Fetching current network configuration from Azure.")
 	azureClient.mutex.Lock()
+	defer azureClient.mutex.Unlock()
 	netConf, err := networkClient.GetVirtualNetworkConfiguration()
 	if err != nil {
 		return fmt.Errorf("Failed to get the current network configuration from Azure: %s", err)
@@ -233,7 +234,6 @@ func resourceAzureDnsServerDelete(d *schema.ResourceData, meta interface{}) erro
 		return fmt.Errorf("Failed issuing update to network configuration: %s", err)
 	}
 	err = managementClient.WaitForOperation(reqID, nil)
-	azureClient.mutex.Unlock()
 	if err != nil {
 		return fmt.Errorf("Error setting network configuration: %s", err)
 	}
