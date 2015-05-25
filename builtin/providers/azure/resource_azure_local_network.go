@@ -236,7 +236,7 @@ func resourceAzureLocalNetworkConnectionDelete(d *schema.ResourceData, meta inte
 
 	log.Println("[INFO] Fetching current network configuration from Azure.")
 	azureClient.mutex.Lock()
-	defer azureClient.mutex.Lock()
+	defer azureClient.mutex.Unlock()
 	netConf, err := networkClient.GetVirtualNetworkConfiguration()
 	if err != nil {
 		return fmt.Errorf("Failed to get the current network configuration from Azure: %s", err)

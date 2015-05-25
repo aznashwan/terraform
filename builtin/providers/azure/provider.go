@@ -40,6 +40,8 @@ func Provider() terraform.ResourceProvider {
 			"azure_instance":                 resourceAzureInstance(),
 			"azure_hosted_service":           resourceAzureHostedService(),
 			"azure_storage_service":          resourceAzureStorageService(),
+			"azure_storage_container":        resourceAzureStorageContainer(),
+			"azure_storage_blob":             resourceAzureStorageBlob(),
 			"azure_virtual_network":          resourceAzureVirtualNetwork(),
 			"azure_dns_server":               resourceAzureDnsServer(),
 			"azure_local_network_connection": resourceAzureLocalNetworkConnection(),

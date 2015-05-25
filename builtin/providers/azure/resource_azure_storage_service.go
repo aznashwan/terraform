@@ -61,6 +61,14 @@ func resourceAzureStorageService() *schema.Resource {
 				Optional: true,
 				Elem:     schema.TypeString,
 			},
+			"primary_key": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"secondary_key": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 		},
 	}
 }
@@ -109,11 +117,11 @@ func resourceAzureStorageServiceCreate(d *schema.ResourceData, meta interface{})
 			},
 		})
 	if err != nil {
-		return fmt.Errorf("Failed to create Azure hosted service: %s", err)
+		return fmt.Errorf("Failed to create Azure storage service: %s", err)
 	}
 	err = managementClient.WaitForOperation(reqID, nil)
 	if err != nil {
-		return fmt.Errorf("Failed updating the network configuration: %s", err)
+		return fmt.Errorf("Failed creating storage service: %s", err)
 	}
 
 	// TODO(aznashwan): find work around here:
@@ -152,13 +160,18 @@ func resourceAzureStorageServiceRead(d *schema.ResourceData, meta interface{}) e
 
 	// read values:
 	d.Set("url", storsvc.URL)
+	log.Println("[INFO] Querying keys of Azure storage service.")
+	keys, err := storageServiceClient.GetStorageServiceKeys(name)
+	if err != nil {
+		return fmt.Errorf("Failed querying keys for Azure storage service: %s", err)
+	}
+	d.Set("primary_key", keys.PrimaryKey)
+	d.Set("secondary_key", keys.SecondaryKey)
 
 	return nil
 }
 
 // TODO(aznashwan): is this necessary?
-// resourceAzureStorageServiceUpdate does all the necessary API calls to
-// update the parameters of the storage service on Azure.
 // func resourceAzureStorageServiceUpdate(d *schema.ResourceData, meta interface{}) error {
 //	return nil
 // }

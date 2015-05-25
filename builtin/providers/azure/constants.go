@@ -39,7 +39,7 @@ var parameterDescriptions = map[string]string{
 	"storage_container":              "The storage container name from the storage pool given with 'storage_pool'.",
 	"user_name":                      "The user name to be configured on the new VM.",
 	"user_password":                  "The user password to be configured on the new VM.",
-	"default_certificate_thumbprint": "The thumbprint of the Winrm Certificate to be used as a default.",
+	"default_certificate_thumbprint": "The thumbprint of the WinRM Certificate to be used as a default.",
 	// local network descriptions:
 	"vpn_gateway_address":    "The IP address of the VPN gateway bridged through this virtual network.",
 	"address_space_prefixes": "List of address space prefixes in the format '<IP>/netmask'",
