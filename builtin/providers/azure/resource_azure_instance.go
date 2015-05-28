@@ -7,7 +7,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/management"
 	"github.com/Azure/azure-sdk-for-go/management/hostedservice"
 	"github.com/Azure/azure-sdk-for-go/management/virtualmachine"
-	//	"github.com/Azure/azure-sdk-for-go/management/vmutils"
+	"github.com/Azure/azure-sdk-for-go/management/vmutils"
 	"github.com/hashicorp/terraform/helper/schema"
 )
 
@@ -153,10 +153,9 @@ func resourceAzureInstanceCreate(d *schema.ResourceData, meta interface{}) error
 	// general variables:
 	label := getRandomStringLabel(50)
 	d.SetId(label)
-	// image := d.Get("image").(string)
+	image := d.Get("image").(string)
 	name := d.Get("name").(string)
 	location := d.Get("location").(string)
-	description := d.Get("descriptiom").(string)
 	serviceName := d.Get("service_name").(string)
 
 	// create the hosted service:
@@ -173,52 +172,50 @@ func resourceAzureInstanceCreate(d *schema.ResourceData, meta interface{}) error
 					Location:       location,
 					ReverseDNSFqdn: "",
 					Label:          label,
-					Description:    description,
 				},
 			)
 			if err != nil {
 				return fmt.Errorf("Error defining new Azure hosted service: %s", err)
 			}
-
-			// err = managementClient.WaitForOperation(reqID, nil)
-			// if err != nil {
-			//	return fmt.Errorf("Error creating new Azure hosted service: %s", err)
-			// }
 		} else {
 			fmt.Errorf("Error querying for existing hosted service.")
 		}
 	}
 
 	// create VM configuration:
-	// role := vmutils.NewVmConfiguration(name, d.Get("size").(string))
+	role := vmutils.NewVMConfiguration(name, d.Get("size").(string))
 
 	// configure the VM's storage:
 	// TODO(aznashwan): put things right here:
-	// storAccount := d.Get("storage_account").(string)
-	// storContainer := d.Get("storage_container").(string)
-	// vhdURL := fmt.Sprintf("http://%s.blob.core.windows.net/%s/%s.vhd", storAccount, storContainer, name)
+	storAccount := d.Get("storage_account").(string)
+	storContainer := d.Get("storage_container").(string)
+	vhdURL := fmt.Sprintf("http://%s.blob.core.windows.net/%s/%s.vhd", storAccount, storContainer, name)
 
-	// err = vmutils.ConfigureDeploymentFromPlatformImage(&role, image, vhdURL, label)
-	// if err != nil {
-	// 	return fmt.Errorf("Failed to configure deployment: %s", err)
-	//}
+	err = vmutils.ConfigureDeploymentFromPlatformImage(&role, image, vhdURL, label)
+	if err != nil {
+		return fmt.Errorf("Failed to configure deployment: %s", err)
+	}
 
 	// configure VM details:
-	//userName := d.Get("user_name").(string)
-	//userPass := d.Get("user_password").(string)
-	//vmutils.ConfigureForLinux(&role, name, userName, userPass)
-	//vmutils.ConfigureWithPublicSSH(&role)
+	userName := d.Get("user_name").(string)
+	userPass := d.Get("user_password").(string)
+	vmutils.ConfigureForLinux(&role, name, userName, userPass)
+	vmutils.ConfigureWithPublicSSH(&role)
 
 	// deploy the VM:
-	// reqID, err := virtualmachine.NewClient(managementClient).CreateDeployment(role, serviceName)
-	// if err != nil {
-	//	return fmt.Errorf("Failed to initiate deployment creation: %s", err)
-	// }
+	reqID, err := virtualmachine.NewClient(managementClient).CreateDeployment(
+		role,
+		serviceName,
+		virtualmachine.CreateDeploymentOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to initiate deployment creation: %s", err)
+	}
 
-	// err = managementClient.WaitForOperation(reqID, nil)
-	// if err != nil {
-	//	return fmt.Errorf("Deployment creation failed: ", err)
-	// }
+	err = managementClient.WaitForOperation(reqID, nil)
+	if err != nil {
+		return fmt.Errorf("Deployment creation failed: %s", err)
+	}
 
 	return resourceAzureInstanceRead(d, meta)
 }

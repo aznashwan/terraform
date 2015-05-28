@@ -87,7 +87,7 @@ func resourceAzureHostedServiceCreate(d *schema.ResourceData, meta interface{}) 
 	description := d.Get("description").(string)
 
 	// set the label as the resource's ID:
-	label := getRandomStringLabel(50)
+	label := getRandomStringLabel(20)
 	d.SetId(label)
 
 	err := hostedServiceClient.CreateHostedService(
