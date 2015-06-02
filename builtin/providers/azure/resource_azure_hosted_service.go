@@ -74,10 +74,7 @@ func resourceAzureHostedService() *schema.Resource {
 // resourceAzureHostedServiceCreate does all the necessary API calls
 // to create a hosted service on Azure.
 func resourceAzureHostedServiceCreate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	hostedServiceClient := hostedservice.NewClient(managementClient)
 
@@ -109,10 +106,7 @@ func resourceAzureHostedServiceCreate(d *schema.ResourceData, meta interface{}) 
 // resourceAzureHostedServiceExists checks whether a hosted service with the
 // given service_name already exists on Azure.
 func resourceAzureHostedServiceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return false, fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	hostedServiceClient := hostedservice.NewClient(azureClient.managementClient)
 
 	log.Println("[INFO] Querying for hosted service existence.")
@@ -134,17 +128,21 @@ func resourceAzureHostedServiceExists(d *schema.ResourceData, meta interface{}) 
 // resourceAzureHostedServiceRead does all the necessary API calls
 // to read the state of a hosted service from Azure.
 func resourceAzureHostedServiceRead(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	hostedServiceClient := hostedservice.NewClient(azureClient.managementClient)
 
 	log.Println("[INFO] Querying for hosted service info.")
 	serviceName := d.Get("service_name").(string)
 	hostedService, err := hostedServiceClient.GetHostedService(serviceName)
 	if err != nil {
-		return fmt.Errorf("Failed to get hosted service: %s", err)
+		if management.IsResourceNotFoundError(err) {
+			// it means the hosted service was deleted in the meantime,
+			// so we must remove it here:
+			d.SetId("")
+			return nil
+		} else {
+			return fmt.Errorf("Failed to get hosted service: %s", err)
+		}
 	}
 
 	log.Println("[DEBUG] Reading hosted service query result data.")
@@ -169,10 +167,7 @@ func resourceAzureHostedServiceUpdate(d *schema.ResourceData, meta interface{}) 
 // resourceAzureHostedServiceDelete does all the necessary API calls to
 // delete a hosted service from Azure.
 func resourceAzureHostedServiceDelete(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	hostedServiceClient := hostedservice.NewClient(managementClient)
 

@@ -22,6 +22,7 @@ func resourceAzureStorageService() *schema.Resource {
 		SchemaVersion: 1,
 
 		Schema: map[string]*schema.Schema{
+			// General attributes:
 			"name": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
@@ -34,21 +35,19 @@ func resourceAzureStorageService() *schema.Resource {
 				ForceNew:    true,
 				Description: parameterDescriptions["location"],
 			},
-			"account_type": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
-				// ForceNew: true,
-				Description: parameterDescriptions["account_type"],
-			},
-			"url": &schema.Schema{
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"description": &schema.Schema{
 				Type:        schema.TypeString,
 				Optional:    true,
 				Default:     "",
 				Description: parameterDescriptions["description"],
+			},
+			// Functional attriutes:
+			"account_type": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+				// TODO(aznashwan): ???
+				// ForceNew: true,
+				Description: parameterDescriptions["account_type"],
 			},
 			"affinity_group": &schema.Schema{
 				Type:        schema.TypeString,
@@ -60,6 +59,11 @@ func resourceAzureStorageService() *schema.Resource {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     schema.TypeString,
+			},
+			// Computed attributes:
+			"url": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
 			},
 			"primary_key": &schema.Schema{
 				Type:     schema.TypeString,
@@ -76,10 +80,7 @@ func resourceAzureStorageService() *schema.Resource {
 // resourceAzureStorageServiceCreate does all the necessary API calls to
 // create a new Azure storage service.
 func resourceAzureStorageServiceCreate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	storageServiceClient := storageservice.NewClient(managementClient)
 
@@ -117,16 +118,12 @@ func resourceAzureStorageServiceCreate(d *schema.ResourceData, meta interface{})
 			},
 		})
 	if err != nil {
-		return fmt.Errorf("Failed to create Azure storage service: %s", err)
+		return fmt.Errorf("Failed to create Azure storage service %s: %s", name, err)
 	}
 	err = managementClient.WaitForOperation(reqID, nil)
 	if err != nil {
-		return fmt.Errorf("Failed creating storage service: %s", err)
+		return fmt.Errorf("Failed creating storage service %s: %s", name, err)
 	}
-
-	// TODO(aznashwan): find work around here:
-	// get computed values:
-	// d.Set("url", svc.Url)
 
 	d.SetId(label)
 	return resourceAzureStorageServiceRead(d, meta)
@@ -135,10 +132,7 @@ func resourceAzureStorageServiceCreate(d *schema.ResourceData, meta interface{})
 // resourceAzureStorageServiceRead does all the necessary API calls to
 // read the state of the storage service off Azure.
 func resourceAzureStorageServiceRead(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	storageServiceClient := storageservice.NewClient(managementClient)
 

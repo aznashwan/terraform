@@ -81,15 +81,13 @@ func resourceAzureSecurityGroupRule() *schema.Resource {
 // resourceAzureSecurityGroupRuleCreate does all the necessary API calls to
 // create a new network security group rule on Azure.
 func resourceAzureSecurityGroupRuleCreate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	netSecClient := netsecgroup.NewClient(managementClient)
 
 	// create and configure the RuleResponse:
 	rule := netsecgroup.RuleRequest{
+		// TODO(aznashwan): security checks here:
 		Name:                     d.Get("name").(string),
 		Type:                     netsecgroup.RuleType(d.Get("type").(string)),
 		Priority:                 d.Get("priority").(int),
@@ -122,10 +120,7 @@ func resourceAzureSecurityGroupRuleCreate(d *schema.ResourceData, meta interface
 // resourceAzureSecurityGroupRuleRead does all the necessary API calls to
 // read the state of a network security group ruke off Azure.
 func resourceAzureSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	netSecClient := netsecgroup.NewClient(managementClient)
 
@@ -161,6 +156,8 @@ func resourceAzureSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}
 			d.Set("destination_address_prefix", rule.DestinationAddressPrefix)
 			d.Set("destination_port_range", rule.DestinationPortRange)
 			d.Set("protocol", rule.Protocol)
+
+			break
 		}
 	}
 
@@ -174,10 +171,7 @@ func resourceAzureSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}
 // resourceAzureSecurityGroupRuleUpdate does all the necessary API calls to
 // update the state of a network security group ruke off Azure.
 func resourceAzureSecurityGroupRuleUpdate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	netSecClient := netsecgroup.NewClient(managementClient)
 
@@ -214,6 +208,7 @@ func resourceAzureSecurityGroupRuleUpdate(d *schema.ResourceData, meta interface
 
 	// else, start building up the rule request struct:
 	newRule := netsecgroup.RuleRequest{
+		// TODO(azhnashwan): Parameter check here:
 		Name:                     d.Get("name").(string),
 		Type:                     netsecgroup.RuleType(d.Get("type").(string)),
 		Priority:                 d.Get("priority").(int),
@@ -245,10 +240,7 @@ func resourceAzureSecurityGroupRuleUpdate(d *schema.ResourceData, meta interface
 // resourceAzureSecurityGroupRuleExists does all the necessary API calls to
 // check for the existence of the network security group rule on Azure.
 func resourceAzureSecurityGroupRuleExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return false, fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	netSecClient := netsecgroup.NewClient(managementClient)
 
@@ -269,29 +261,24 @@ func resourceAzureSecurityGroupRuleExists(d *schema.ResourceData, meta interface
 	}
 
 	// try and find our security group rule:
-	var found bool
 	name := d.Get("name").(string)
 	for _, rule := range secgroup.Rules {
 		if rule.Name == name {
-			found = true
+			return true, nil
 		}
 	}
-	// check is the resource has not been deleted in the meantime:
-	if !found {
-		// if not; remove the resource:
-		d.SetId("")
-	}
 
-	return found, nil
+	// if here; it means the resource has been deleted in the
+	// meantime and must be removed from the schema:
+	d.SetId("")
+
+	return false, nil
 }
 
 // resourceAzureSecurityGroupRuleDelete does all the necessary API calls to
 // delete a network security group rule off Azure.
 func resourceAzureSecurityGroupRuleDelete(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	netSecClient := netsecgroup.NewClient(managementClient)
 
@@ -301,37 +288,30 @@ func resourceAzureSecurityGroupRuleDelete(d *schema.ResourceData, meta interface
 	log.Println("[INFO] Sending network security group rule query for deletion to Azure.")
 	secgroup, err := netSecClient.GetNetworkSecurityGroup(secGroupName)
 	if err != nil {
-		if !management.IsResourceNotFoundError(err) {
-			return fmt.Errorf("Error issuing network security group rules query: %s", err)
-		} else {
+		if management.IsResourceNotFoundError(err) {
 			// it meants that the network security group this rule belonged to has
 			// been deleted; so we need do nothing more but stop tracking the resource:
 			d.SetId("")
 			return nil
+		} else {
+			return fmt.Errorf("Error issuing network security group rules query: %s", err)
 		}
 	}
 
 	// check is the resource has not been deleted in the meantime:
-	var found bool
 	name := d.Get("name").(string)
 	for _, rule := range secgroup.Rules {
 		if rule.Name == name {
-			found = true
+			// if not; we shall issue the delete:
+			reqID, err := netSecClient.DeleteNetworkSecurityGroupRule(secGroupName, name)
+			if err != nil {
+				return fmt.Errorf("Error sending network security group rule delete request to Azure: %s", err)
+			}
+			err = managementClient.WaitForOperation(reqID, nil)
+			if err != nil {
+				return fmt.Errorf("Error deleting network security group rule off Azure: %s", err)
+			}
 		}
-	}
-	if !found {
-		// if not; remove the resource:
-		d.SetId("")
-	}
-
-	// if not; we shall issue the delete:
-	reqID, err := netSecClient.DeleteNetworkSecurityGroupRule(secGroupName, name)
-	if err != nil {
-		return fmt.Errorf("Error sending network security group rule delete request to Azure: %s", err)
-	}
-	err = managementClient.WaitForOperation(reqID, nil)
-	if err != nil {
-		return fmt.Errorf("Error deleting network security group rule off Azure: %s", err)
 	}
 
 	return nil

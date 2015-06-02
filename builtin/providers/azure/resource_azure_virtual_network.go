@@ -78,10 +78,7 @@ func resourceAzureVirtualNetwork() *schema.Resource {
 // resourceAzureVirtualNetworkCreate does all the necessary API calls to create
 // an Azure virtual network.
 func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 	netSecClient := netsecgroup.NewClient(managementClient)
@@ -94,8 +91,15 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf("Error while retrieving current network configuration: %s", err)
 	}
 
-	// create new virtual network configuration and add it to the config.
+	// check to ensure the virtual network does not exists already:
 	name := d.Get("name").(string)
+	for _, vn := range netConf.Configuration.VirtualNetworkSites {
+		if vn.Name == name {
+			return fmt.Errorf("A virtual network with the given name already exists!")
+		}
+	}
+
+	// create new virtual network configuration and add it to the config.
 	location := d.Get("location").(string)
 
 	// fetch address spaces:
@@ -179,10 +183,7 @@ func resourceAzureVirtualNetworkCreate(d *schema.ResourceData, meta interface{})
 // resourceAzureVirtualNetworkRead does all the necessary API calls to read
 // the state of a virtual network from Azure.
 func resourceAzureVirtualNetworkRead(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 	secGroupClient := netsecgroup.NewClient(managementClient)
@@ -196,8 +197,11 @@ func resourceAzureVirtualNetworkRead(d *schema.ResourceData, meta interface{}) e
 	name := d.Get("name").(string)
 	location := d.Get("location").(string)
 
+	// search for our virtual network's configuration:
+	var found bool
 	for _, vnet := range netConf.Configuration.VirtualNetworkSites {
 		if vnet.Name == name && vnet.Location == location {
+			found = true
 			d.Set("address_space_prefixes", vnet.AddressSpace.AddressPrefix)
 
 			// read subnets:
@@ -231,16 +235,19 @@ func resourceAzureVirtualNetworkRead(d *schema.ResourceData, meta interface{}) e
 		}
 	}
 
+	if !found {
+		// it means that the resource was deleted in the meantime and
+		// we must remove it from the schema.
+		d.SetId("")
+	}
+
 	return nil
 }
 
 // resourceAzureVirtualNetworkUpdate does all the necessary API calls to
 // update the status of our virtual network.
 func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 	secGroupClient := netsecgroup.NewClient(managementClient)
@@ -350,6 +357,7 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 				vnets[i].Subnets = subnets
 			}
 		}
+		break
 	}
 
 	// if the resource was not found; it means it was deleted from outside Terraform
@@ -374,10 +382,7 @@ func resourceAzureVirtualNetworkUpdate(d *schema.ResourceData, meta interface{})
 // resourceAzureVirtualNetworkExists does all the necessary API calls to
 // check if the virtual network already exists.
 func resourceAzureVirtualNetworkExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return false, fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 
@@ -398,16 +403,16 @@ func resourceAzureVirtualNetworkExists(d *schema.ResourceData, meta interface{})
 		}
 	}
 
+	// if not found; it means the resource was deleted in the
+	// meantime, and we must remove it from the schema.
+	d.SetId("")
 	return false, nil
 }
 
 // resourceAzureVirtualNetworkDelete does all the necessary API calls to delete
 // the virtual network off Azure.
 func resourceAzureVirtualNetworkDelete(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 	secGroupClient := netsecgroup.NewClient(managementClient)
@@ -445,39 +450,35 @@ func resourceAzureVirtualNetworkDelete(d *schema.ResourceData, meta interface{})
 				if err != nil {
 					return fmt.Errorf("Error removing network security group settings from subnet %d: %s", i+1, err)
 				}
+
+				break
 			}
 		}
 	}
 
 	// look for our virtual network and remove it:
-	var found bool
 	for i, vnet := range netConf.Configuration.VirtualNetworkSites {
 		if vnet.Name == name && vnet.Location == location {
-			found = true
 			netConf.Configuration.VirtualNetworkSites = append(
 				netConf.Configuration.VirtualNetworkSites[:i],
 				netConf.Configuration.VirtualNetworkSites[i+1:]...,
 			)
+
+			// send the updated configuration back:
+			log.Printf("[INFO] Starting deletion of virtual network %s off Azure.", name)
+			log.Println("[INFO] Sending virtual network configuration back to Azure.")
+			reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
+			if err != nil {
+				return fmt.Errorf("Failed updating network configuration: %s", err)
+			}
+			err = managementClient.WaitForOperation(reqID, nil)
+			if err != nil {
+				return fmt.Errorf("Failed to set new Azure network configuration: %s", err)
+			}
+
+			break
 		}
 	}
 
-	// if not found; it means the resource has been delted in the meantime;
-	// so we stop keeping track if it:
-	if !found {
-		d.SetId("")
-	} else {
-		// else; send the updated configuration back:
-		log.Println("[INFO] Sending virtual network configuration back to Azure.")
-		reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
-		if err != nil {
-			return fmt.Errorf("Failed updating network configuration: %s", err)
-		}
-		err = managementClient.WaitForOperation(reqID, nil)
-		if err != nil {
-			return fmt.Errorf("Failed to set new Azure network configuration: %s", err)
-		}
-	}
-
-	d.SetId("")
 	return nil
 }

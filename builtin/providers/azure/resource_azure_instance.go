@@ -47,6 +47,10 @@ func resourceAzureInstance() *schema.Resource {
 				ForceNew:    true,
 				Description: parameterDescriptions["image"],
 			},
+			"deployment_slot": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			// TODO(aznashwan): make this used:
 			// 	- seperate config for Linux and Windows
 			// 	- Windows to join domain.
@@ -203,10 +207,13 @@ func resourceAzureInstanceCreate(d *schema.ResourceData, meta interface{}) error
 	vmutils.ConfigureWithPublicSSH(&role)
 
 	// deploy the VM:
+	slot := d.Get("deployment_slot").(string)
 	reqID, err := virtualmachine.NewClient(managementClient).CreateDeployment(
 		role,
 		serviceName,
-		virtualmachine.CreateDeploymentOptions{},
+		virtualmachine.CreateDeploymentOptions{
+			DeploymentSlot: slot,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("Failed to initiate deployment creation: %s", err)

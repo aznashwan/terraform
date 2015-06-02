@@ -25,3 +25,13 @@ func getRandomStringLabel(n int) string {
 	}
 	return string(buf)
 }
+
+// sprintfParams is a helper function which takes a string-bool map and returns
+// a formatted string with all the keys for displaying in errors.
+func sprintfParams(m map[string]bool) string {
+	s := ""
+	for k, _ := range m {
+		s = s + k + ", "
+	}
+	return s[:len(s)-2]
+}

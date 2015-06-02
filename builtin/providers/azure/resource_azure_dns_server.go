@@ -38,10 +38,7 @@ func resourceAzureDnsServer() *schema.Resource {
 // resourceAzureDnsServerCreate does all the necessary API calls
 // to create a new DNS server definition on Azure.
 func resourceAzureDnsServerCreate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 
@@ -81,10 +78,7 @@ func resourceAzureDnsServerCreate(d *schema.ResourceData, meta interface{}) erro
 // resourceAzureDnsServerRead does all the necessary API calls to read
 // the state of the DNS server off Azure.
 func resourceAzureDnsServerRead(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 
@@ -102,6 +96,7 @@ func resourceAzureDnsServerRead(d *schema.ResourceData, meta interface{}) error 
 		if dns.Name == name {
 			found = true
 			d.Set("dns_address", dns.IPAddress)
+			break
 		}
 	}
 
@@ -116,39 +111,35 @@ func resourceAzureDnsServerRead(d *schema.ResourceData, meta interface{}) error 
 // resourceAzureDnsServerUpdate does all the necessary API calls
 // to update the DNS definition on Azure.
 func resourceAzureDnsServerUpdate(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 
-	var err error
 	var found bool
 	name := d.Get("name").(string)
 	caddress := d.HasChange("dns_address")
-	var netConf virtualnetwork.NetworkConfiguration
 
 	if caddress {
 		log.Println("[DEBUG] DNS server address has changes; updating it on Azure.")
 		log.Println("[INFO] Fetching current network configuration from Azure.")
 		azureClient.mutex.Lock()
 		defer azureClient.mutex.Unlock()
-		netConf, err = networkClient.GetVirtualNetworkConfiguration()
+		netConf, err := networkClient.GetVirtualNetworkConfiguration()
 		if err != nil {
 			return fmt.Errorf("Failed to get the current network configuration from Azure: %s", err)
 		}
 
 		// search for our DNS and update its address value:
 		for i, dns := range netConf.Configuration.DNS.DNSServers {
-			found = true
 			if dns.Name == name {
+				found = true
 				netConf.Configuration.DNS.DNSServers[i].IPAddress = d.Get("dns_address").(string)
+				break
 			}
 		}
 
 		// if the config has changes, send the configuration back to Azure:
-		if found && caddress {
+		if found {
 			log.Println("[INFO] Sending updated network configuration back to Azure.")
 			reqID, err := networkClient.SetVirtualNetworkConfiguration(netConf)
 			if err != nil {
@@ -172,10 +163,7 @@ func resourceAzureDnsServerUpdate(d *schema.ResourceData, meta interface{}) erro
 // resourceAzureDnsServerExists does all the necessary API calls to
 // check if the DNS server definition alredy exists on Azure.
 func resourceAzureDnsServerExists(d *schema.ResourceData, meta interface{}) (bool, error) {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return false, fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 
@@ -194,16 +182,15 @@ func resourceAzureDnsServerExists(d *schema.ResourceData, meta interface{}) (boo
 		}
 	}
 
+	// if we reached this point; the resource must have been deleted; and we must untrack it:
+	d.SetId("")
 	return false, nil
 }
 
 // resourceAzureDnsServerDelete does all the necessary API calls
 // to delete the DNS server definition from Azure.
 func resourceAzureDnsServerDelete(d *schema.ResourceData, meta interface{}) error {
-	azureClient, ok := meta.(*AzureClient)
-	if !ok {
-		return fmt.Errorf("Failed to convert to *AzureClient, got: %T", meta)
-	}
+	azureClient := meta.(*AzureClient)
 	managementClient := azureClient.managementClient
 	networkClient := virtualnetwork.NewClient(managementClient)
 
@@ -224,6 +211,7 @@ func resourceAzureDnsServerDelete(d *schema.ResourceData, meta interface{}) erro
 				netConf.Configuration.DNS.DNSServers[:i],
 				netConf.Configuration.DNS.DNSServers[i+1:]...,
 			)
+			break
 		}
 	}
 
@@ -238,6 +226,5 @@ func resourceAzureDnsServerDelete(d *schema.ResourceData, meta interface{}) erro
 		return fmt.Errorf("Error setting network configuration: %s", err)
 	}
 
-	d.SetId("")
 	return nil
 }
